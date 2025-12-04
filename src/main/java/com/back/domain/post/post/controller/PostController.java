@@ -5,100 +5,124 @@ import com.back.domain.post.post.service.PostService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
-import org.springframework.validation.FieldError;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
 public class PostController {
     private final PostService postService;
 
-    @GetMapping("/")
-    public String redirectToPosts() {
-        return "redirect:/posts/write";
-    }
 
-    private String getWriteFormHtml() {
-        return getWriteFormHtml("", "", "", "");
-    }
-
-    private String getWriteFormHtml(
-            String errorFieldName,
-            String errorMessage,
+    record ModifyForm(
+            @NotBlank(message = "01-title-제목을 입력해주세요.")
+            @Size(min = 2, max = 20, message = "02-title-제목은 2자 이상, 20자 이하로 입력가능합니다.")
             String title,
+            @NotBlank(message = "03-content-내용을 입력해주세요.")
+            @Size(min = 2, max = 20, message = "04-content-내용은 2자 이상, 20자 이하로 입력가능합니다.")
             String content
     ) {
-        return """
-                <div style="color: red;">%s</div>
-                
-                <form method="POST" action="doWrite">
-                  <input type="text" name="title" placeholder="제목" value="%s" autofocus>
-                  <br>
-                  <textarea name="content" placeholder="내용">%s</textarea>
-                  <br>
-                  <input type="submit" value="작성">
-                </form>
-                
-                <script>
-                const errorFieldName = '%s';
-                
-                if ( errorFieldName.length > 0 )
-                {
-                    // 현재까지 나온 모든 폼 검색
-                    const forms = document.querySelectorAll('form');
-                    // 그 중에서 가장 마지막 폼 1개 찾기
-                    const lastForm = forms[forms.length - 1];
-                
-                    lastForm[errorFieldName].focus();
-                }
-                </script>
-                """.formatted(errorMessage, title, content, errorFieldName);
+    }
+
+    @GetMapping("/posts/{id}/modify")
+    @Transactional(readOnly = true)
+    public String showModify(
+            @PathVariable int id,
+            Model model
+    ) {
+        Post post = postService.findById(id).get();
+
+        model.addAttribute("post", post);
+        model.addAttribute("form", new ModifyForm(post.getTitle(), post.getContent()));
+
+        return "post/post/modify";
+    }
+
+    @PutMapping("/posts/{id}/modify")
+    @Transactional
+    public String modify(
+            @PathVariable int id,
+            @Valid @ModelAttribute("form") ModifyForm form,
+            BindingResult bindingResult,
+            Model model
+    ) {
+        Post post = postService.findById(id).get();
+        model.addAttribute("post", post);
+
+        if (bindingResult.hasErrors()) {
+            return "post/post/modify";
+        }
+
+        postService.modify(post, form.title, form.content);
+
+        return "redirect:/posts/" + post.getId();
+    }
+
+
+    record WriteForm(
+            @NotBlank(message = "01-title-제목을 입력해주세요.")
+            @Size(min = 2, max = 20, message = "02-title-제목은 2자 이상, 20자 이하로 입력가능합니다.")
+            String title,
+            @NotBlank(message = "03-content-내용을 입력해주세요.")
+            @Size(min = 2, max = 20, message = "04-content-내용은 2자 이상, 20자 이하로 입력가능합니다.")
+            String content
+    ) {
+
     }
 
     @GetMapping("/posts/write")
-    @ResponseBody
-    public String showWrite() {
-        return getWriteFormHtml();
+    public String showWrite(@ModelAttribute("form") WriteForm form) {
+        return "post/post/write";
     }
 
-
-    @AllArgsConstructor
-    @Getter
-    public static class WriteForm {
-        @NotBlank(message = "제목을 입력해주세요.")
-        @Size(min = 2, max = 20, message = "제목은 2자 이상, 20자 이하로 입력가능합니다.")
-        private String title;
-        @NotBlank(message = "내용을 입력해주세요.")
-        @Size(min = 2, max = 20, message = "내용은 2자 이상, 20자 이하로 입력가능합니다.")
-        private String content;
-    }
-
-    @PostMapping("/posts/doWrite")
-    @ResponseBody
+    @PostMapping("/posts/write")
     @Transactional
     public String write(
-            @Valid WriteForm form,
+            @ModelAttribute("form") @Valid WriteForm form,
             BindingResult bindingResult
     ) {
         if (bindingResult.hasErrors()) {
-            FieldError fieldError = bindingResult.getFieldError();
-
-            String errorFieldName = fieldError.getField();
-            String errorMessage = fieldError.getDefaultMessage();
-
-            return getWriteFormHtml(errorFieldName, errorMessage, form.getTitle(), form.getContent());
+            return "post/post/write";
         }
 
-        Post post = postService.write(form.getTitle(), form.getContent());
+        Post post = postService.write(form.title, form.content);
 
-        return "%d번 글이 생성되었습니다.".formatted(post.getId());
+        return "redirect:/posts/" + post.getId();
+    }
+
+
+    @GetMapping("/posts/{id}")
+    @Transactional(readOnly = true)
+    public String showDetail(
+            @PathVariable int id,
+            Model model
+    ) {
+        Post post = postService.findById(id).get();
+
+        model.addAttribute("post", post);
+
+        return "post/post/detail";
+    }
+
+
+    @GetMapping("/posts")
+    @Transactional(readOnly = true)
+    public String showList(Model mod) {
+        List<Post> posts = postService.findAll();
+
+        mod.addAttribute("posts", posts);
+
+        return "post/post/list";
+    }
+
+    @GetMapping("/posts/")
+    public String redirectToList() {
+        return "redirect:/posts";
     }
 }
